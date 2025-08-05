@@ -5,12 +5,17 @@ dependencies {
     annotationProcessor "org.springframework.boot:spring-boot-configuration-processor:${springBootVersion}"
     api "org.springframework.boot:spring-boot-autoconfigure"
     api "org.springframework.boot:spring-boot-starter-jdbc"
-    implementation "org.springframework.boot:spring-boot-configuration-processor"
-    implementation "org.springframework.boot:spring-boot-autoconfigure-processor"
-    implementation "${lib['mybatis-thymeleaf']}"
-    implementation "${lib.'mybatis-velocity'}"
-    implementation "${lib.'mybatis-freemarker'}"
-    implementation "${lib.'spring-cloud-commons'}"
+    // Annotation processors are already declared above; avoid leaking them into runtime classpath
+    compileOnly "org.springframework.boot:spring-boot-configuration-processor"
+    compileOnly "org.springframework.boot:spring-boot-autoconfigure-processor"
+
+    // Language driver libraries are only required if the user opts in; keep them off the runtime classpath by default
+    compileOnly "${lib['mybatis-thymeleaf']}"
+    compileOnly "${lib.'mybatis-velocity'}"
+    compileOnly "${lib.'mybatis-freemarker'}"
+
+    // Spring Cloud Commons is only necessary in cloud deployments
+    compileOnly "${lib.'spring-cloud-commons'}"
     testImplementation "org.springframework.boot:spring-boot-starter-test"
     testImplementation "${lib.'mybatis-spring-boot-starter'}"
     testImplementation "${lib.h2}"
