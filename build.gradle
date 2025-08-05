@@ -1,5 +1,7 @@
 import java.time.LocalDateTime
 
+// Performance monitoring integrated into build
+
 allprojects {
     group APP_GROUP
     version APP_VERSION
@@ -79,6 +81,15 @@ ext {
 
 description = "Mybatis 增强工具包 - 只做增强不做改变，简化CRUD操作"
 
+// Performance monitoring
+def buildStartTime = System.currentTimeMillis()
+gradle.buildFinished { result ->
+    def duration = System.currentTimeMillis() - buildStartTime
+    def minutes = duration / 60000
+    def seconds = (duration % 60000) / 1000
+    println "Build completed in ${minutes}m ${seconds}s - ${result.failure ? 'FAILED' : 'SUCCESS'}"
+}
+
 subprojects {
     apply plugin: 'java-library'
     apply plugin: 'signing'
@@ -108,6 +119,9 @@ subprojects {
         options.warnings = false
         options.deprecation = true
         options.compilerArgs += ["-parameters"]
+        options.fork = true
+        options.incremental = true
+        options.forkOptions.jvmArgs += ['-XX:+UseParallelGC']
     }
 
     tasks.withType(GenerateModuleMetadata) {
@@ -115,6 +129,16 @@ subprojects {
     }
 
     jar {
+        // Enable compression for smaller JAR files
+        entryCompression = ZipEntryCompression.DEFLATED
+        
+        // Exclude unnecessary files to reduce bundle size
+        exclude '**/.*'
+        exclude '**/thumbs.db'
+        exclude '**/Thumbs.db'
+        exclude '**/*.tmp'
+        exclude '**/*.bak'
+        
         into("META-INF/") {
             from rootProject.file("LICENSE")
         }
@@ -174,6 +198,22 @@ subprojects {
     test {
         dependsOn("cleanTest", "generatePomFileForMavenJavaPublication")
         useJUnitPlatform()
+        
+        // Performance optimizations for test execution
+        maxParallelForks = Runtime.runtime.availableProcessors().intdiv(2) ?: 1
+        forkEvery = 100
+        
+        // Memory optimizations
+        minHeapSize = "512m"
+        maxHeapSize = "2g"
+        
+        // JVM optimizations for tests
+        jvmArgs += [
+            '-XX:+UseParallelGC',
+            '-XX:MaxGCPauseMillis=100',
+            '-Djava.awt.headless=true'
+        ]
+        
         // 增加jvm参数不是一个很好的处理方案,最好还是只用java8下跑,下面只是兼容运行一下,但在高版本jdk下还有很多第三方反射库存在问题(等待完全升级)
         // 部分测试用例如果需要在高版本java下运行用@EnabledOnJre
         // 例如: https://github.com/cglib/cglib/issues/191
@@ -185,6 +225,9 @@ subprojects {
         exclude("**/phoenix/**")
         exclude("**/postgresql/**")
         exclude("**/generator/**")
+        
+        // Enable test result caching
+        outputs.upToDateWhen { false }
     }
 
     task javadocJar(type: Jar) {

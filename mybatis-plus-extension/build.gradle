@@ -4,18 +4,27 @@ dependencies {
     api project(":mybatis-plus-core")
     api "${lib."mybatis-spring"}"
 
-    implementation "${lib."kotlin-stdlib-jdk8"}"
-    implementation "${lib."kotlin-reflect"}"
+    // Core implementations
     implementation "${lib."spring-context-support"}"
     implementation "${lib."spring-jdbc"}"
     implementation "${lib."slf4j-api"}"
-    implementation "${lib."p6spy"}"
-    implementation "${lib."jackson"}"
-    implementation "${lib."fastjson"}"
-    implementation "${lib."gson"}"
-    implementation "${lib['mybatis-thymeleaf']}"
-    implementation "${lib.'mybatis-velocity'}"
-    implementation "${lib.'mybatis-freemarker'}"
+    
+    // Optional dependencies - only included when needed
+    compileOnly "${lib."kotlin-stdlib-jdk8"}"
+    compileOnly "${lib."kotlin-reflect"}"
+    compileOnly "${lib."p6spy"}"
+    compileOnly "${lib."jackson"}"
+    compileOnly "${lib."fastjson"}"
+    compileOnly "${lib."gson"}"
+    compileOnly "${lib['mybatis-thymeleaf']}"
+    compileOnly "${lib.'mybatis-velocity'}"
+    compileOnly "${lib.'mybatis-freemarker'}"
+    
+    testImplementation "${lib."kotlin-stdlib-jdk8"}"
+    testImplementation "${lib."kotlin-reflect"}"
+    testImplementation "${lib."jackson"}"
+    testImplementation "${lib."fastjson"}"
+    testImplementation "${lib."gson"}"
     testImplementation "com.github.pagehelper:pagehelper:5.3.1"
     testImplementation "com.google.guava:guava:31.1-jre"
 }

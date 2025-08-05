@@ -3,9 +3,14 @@ dependencies {
     api "${lib.'jsqlparser'}"
     api "${lib.mybatis}"
 
+    // Mark optional dependencies to reduce bundle size for consumers
+    compileOnly "${lib.cglib}"
+    compileOnly "${lib.'spring-aop'}"
+    compileOnly "${lib.'imadcn'}"
+    compileOnly "${lib.'mybatis-ehcache'}"
+    compileOnly "${lib.'mybatis-redis'}"
+    
+    // Still include in implementation for internal use
     implementation "${lib.cglib}"
     implementation "${lib.'spring-aop'}"
-    implementation "${lib.'imadcn'}"
-    implementation "${lib.'mybatis-ehcache'}"
-    implementation "${lib.'mybatis-redis'}"
 }
