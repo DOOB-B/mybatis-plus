@@ -25,6 +25,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 继承至MapperRegistry
@@ -35,7 +36,12 @@ import java.util.Map;
 public class MybatisMapperRegistry extends MapperRegistry {
 
     private final Configuration config;
-    private final Map<Class<?>, MybatisMapperProxyFactory<?>> knownMappers = new HashMap<>();
+    private final Map<Class<?>, MybatisMapperProxyFactory<?>> knownMappers = new ConcurrentHashMap<>();
+    
+    /**
+     * Name-based lookup cache for better performance
+     */
+    private final Map<String, MybatisMapperProxyFactory<?>> nameMapperCache = new ConcurrentHashMap<>();
 
     public MybatisMapperRegistry(Configuration config) {
         super(config);
@@ -49,9 +55,12 @@ public class MybatisMapperRegistry extends MapperRegistry {
         // fix https://github.com/baomidou/mybatis-plus/issues/4247
         MybatisMapperProxyFactory<T> mapperProxyFactory = (MybatisMapperProxyFactory<T>) knownMappers.get(type);
         if (mapperProxyFactory == null) {
-            mapperProxyFactory = (MybatisMapperProxyFactory<T>) knownMappers.entrySet().stream()
-                .filter(t -> t.getKey().getName().equals(type.getName())).findFirst().map(Map.Entry::getValue)
-                .orElseThrow(() -> new BindingException("Type " + type + " is not known to the MybatisPlusMapperRegistry."));
+            // Use name-based cache for faster lookup
+            String typeName = type.getName();
+            mapperProxyFactory = (MybatisMapperProxyFactory<T>) nameMapperCache.get(typeName);
+            if (mapperProxyFactory == null) {
+                throw new BindingException("Type " + type + " is not known to the MybatisPlusMapperRegistry.");
+            }
         }
         try {
             return mapperProxyFactory.newInstance(sqlSession);
@@ -69,8 +78,8 @@ public class MybatisMapperRegistry extends MapperRegistry {
      * 清空 Mapper 缓存信息
      */
     protected <T> void removeMapper(Class<T> type) {
-        knownMappers.entrySet().stream().filter(t -> t.getKey().getName().equals(type.getName()))
-            .findFirst().ifPresent(t -> knownMappers.remove(t.getKey()));
+        knownMappers.remove(type);
+        nameMapperCache.remove(type.getName());
     }
 
     @Override
@@ -85,7 +94,10 @@ public class MybatisMapperRegistry extends MapperRegistry {
             boolean loadCompleted = false;
             try {
                 // TODO 这里也换成 MybatisMapperProxyFactory 而不是 MapperProxyFactory
-                knownMappers.put(type, new MybatisMapperProxyFactory<>(type));
+                MybatisMapperProxyFactory<T> mapperProxyFactory = new MybatisMapperProxyFactory<>(type);
+                knownMappers.put(type, mapperProxyFactory);
+                nameMapperCache.put(type.getName(), mapperProxyFactory);
+                
                 // It's important that the type is added before the parser is run
                 // otherwise the binding may automatically be attempted by the
                 // mapper parser. If the type is already known, it won't try.
@@ -96,6 +108,7 @@ public class MybatisMapperRegistry extends MapperRegistry {
             } finally {
                 if (!loadCompleted) {
                     knownMappers.remove(type);
+                    nameMapperCache.remove(type.getName());
                 }
             }
         }
