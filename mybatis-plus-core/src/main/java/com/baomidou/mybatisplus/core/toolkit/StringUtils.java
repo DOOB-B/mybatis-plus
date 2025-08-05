@@ -20,6 +20,7 @@ import com.baomidou.mybatisplus.core.toolkit.sql.StringEscape;
 import com.baomidou.mybatisplus.core.toolkit.support.BiIntFunction;
 
 import java.util.Collection;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -64,6 +65,11 @@ public final class StringUtils {
     private static final Pattern REPLACE_BLANK = Pattern.compile("'|\"|\\<|\\>|&|\\*|\\+|=|#|-|;|\\s*|\t|\r|\n");
 
     /**
+     * Pattern cache for better performance
+     */
+    private static final ConcurrentHashMap<String, Pattern> PATTERN_CACHE = new ConcurrentHashMap<>();
+
+    /**
      * 判断字符串中是否全是空白字符
      *
      * @param cs 需要判断的字符串
@@ -98,10 +104,22 @@ public final class StringUtils {
         return !isBlank(cs);
     }
 
+    /**
+     * 判断字符串是否为空
+     *
+     * @param cs 需要判断的字符串
+     * @return 判断结果
+     */
     public static boolean isEmpty(CharSequence cs) {
         return cs == null || cs.length() == 0;
     }
 
+    /**
+     * 判断字符串是否不为空
+     *
+     * @param cs 需要判断的字符串
+     * @return 判断结果
+     */
     public static boolean isNotEmpty(CharSequence cs) {
         return !isEmpty(cs);
     }
@@ -143,10 +161,10 @@ public final class StringUtils {
     }
 
     /**
-     * 字符串驼峰转下划线格式
+     * 驼峰命名转换
      *
      * @param param 需要转换的字符串
-     * @return 转换好的字符串
+     * @return 转换后的字符串
      */
     public static String camelToUnderline(String param) {
         if (isBlank(param)) {
@@ -165,23 +183,22 @@ public final class StringUtils {
     }
 
     /**
-     * 字符串下划线转驼峰格式
+     * 下划线转驼峰命名
      *
      * @param param 需要转换的字符串
-     * @return 转换好的字符串
+     * @return 转换后的字符串
      */
     public static String underlineToCamel(String param) {
         if (isBlank(param)) {
             return StringPool.EMPTY;
         }
-        String temp = param.toLowerCase();
-        int len = temp.length();
+        int len = param.length();
         StringBuilder sb = new StringBuilder(len);
         for (int i = 0; i < len; i++) {
-            char c = temp.charAt(i);
+            char c = param.charAt(i);
             if (c == UNDERLINE) {
                 if (++i < len) {
-                    sb.append(Character.toUpperCase(temp.charAt(i)));
+                    sb.append(Character.toUpperCase(param.charAt(i)));
                 }
             } else {
                 sb.append(c);
@@ -194,75 +211,71 @@ public final class StringUtils {
      * 首字母转换小写
      *
      * @param param 需要转换的字符串
-     * @return 转换好的字符串
+     * @return 转换后的字符串
      */
     public static String firstToLowerCase(String param) {
         if (isBlank(param)) {
             return StringPool.EMPTY;
         }
-        return param.substring(0, 1).toLowerCase() + param.substring(1);
+        StringBuilder sb = new StringBuilder(param.length());
+        sb.append(Character.toLowerCase(param.charAt(0)));
+        sb.append(param.substring(1));
+        return sb.toString();
     }
 
     /**
-     * 正则表达式匹配
+     * 字符串匹配
      *
-     * @param regex 正则表达式字符串
-     * @param input 要匹配的字符串
-     * @return 如果 input 符合 regex 正则表达式格式, 返回true, 否则返回 false;
+     * @param regex 正则表达式
+     * @param input 匹配的字符串
+     * @return 匹配结果
      */
     public static boolean matches(String regex, String input) {
         if (null == regex || null == input) {
             return false;
         }
-        return Pattern.matches(regex, input);
+        return getCachedPattern(regex).matcher(input).matches();
     }
 
     /**
-     * 替换 SQL 语句中的占位符，例如输入 SELECT * FROM test WHERE id = {0} AND name = {1} 会被替换为
-     * SELECT * FROM test WHERE id = 1 AND name = 'MP'
-     * <p>
-     * 当数组中参数不足时，该方法会抛出错误：数组下标越界{@link ArrayIndexOutOfBoundsException}
-     * </p>
+     * SQL 参数填充
      *
      * @param content 填充内容
      * @param args    填充参数
+     * @return 填充后的字符串
      */
     public static String sqlArgsFill(String content, Object... args) {
-        if (StringUtils.isNotBlank(content) && ArrayUtils.isNotEmpty(args)) {
-            // 索引不能使用，因为 SQL 中的占位符数字与索引不相同
-            BiIntFunction<Matcher, CharSequence> handler = (m, i) -> sqlParam(args[Integer.parseInt(m.group("idx"))]);
-            return replace(content, MP_SQL_PLACE_HOLDER, handler).toString();
+        if (isBlank(content) || ArrayUtils.isEmpty(args)) {
+            return content;
         }
-        return content;
+        Matcher matcher = MP_SQL_PLACE_HOLDER.matcher(content);
+        StringBuffer sb = new StringBuffer();
+        int i = 0;
+        while (matcher.find()) {
+            Object value = args[i++];
+            if (null != value) {
+                matcher.appendReplacement(sb, Matcher.quoteReplacement(String.valueOf(value)));
+            }
+        }
+        matcher.appendTail(sb);
+        return sb.toString();
     }
 
     /**
-     * 根据指定的表达式替换字符串中指定格式的部分
-     * <p>
-     * BiIntFunction 中的 第二个 参数将传递 参数在字符串中的索引
-     * </p>
+     * 获取缓存或编译新的Pattern
      *
-     * @param src      源字符串
-     * @param ptn      需要替换部分的正则表达式
-     * @param replacer 替换处理器
-     * @return 返回字符串构建起
+     * @param regex 正则表达式
+     * @return Pattern对象
      */
-    public static StringBuilder replace(CharSequence src, Pattern ptn, BiIntFunction<Matcher, CharSequence> replacer) {
-        int idx = 0, last = 0, len = src.length();
-        Matcher m = ptn.matcher(src);
-        StringBuilder sb = new StringBuilder();
+    private static Pattern getCachedPattern(String regex) {
+        return PATTERN_CACHE.computeIfAbsent(regex, Pattern::compile);
+    }
 
-        // 扫描一次字符串
-        while (m.find()) {
-            sb.append(src, last, m.start()).append(replacer.apply(m, idx++));
-            last = m.end();
-        }
-        // 如果表达式没有匹配或者匹配未到末尾，该判断保证字符串完整性
-        if (last < len) {
-            sb.append(src, last, len);
-        }
-
-        return sb;
+    /**
+     * 清除Pattern缓存
+     */
+    public static void clearPatternCache() {
+        PATTERN_CACHE.clear();
     }
 
     /**

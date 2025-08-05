@@ -98,27 +98,19 @@ public class TableInfoHelper {
             return null;
         }
         // https://github.com/baomidou/mybatis-plus/issues/299
-        Class<?> targetClass = ClassUtils.getUserClass(clazz);
-        TableInfo tableInfo = TABLE_INFO_CACHE.get(targetClass);
-        if (null != tableInfo) {
-            return tableInfo;
-        }
-        //尝试获取父类缓存
-        Class<?> currentClass = clazz;
-        while (null == tableInfo && Object.class != currentClass) {
-            currentClass = currentClass.getSuperclass();
-            tableInfo = TABLE_INFO_CACHE.get(ClassUtils.getUserClass(currentClass));
-        }
-        //把父类的移到子类中来
-        if (tableInfo != null) {
-            TABLE_INFO_CACHE.put(targetClass, tableInfo);
-        }
-        return tableInfo;
+        return CollectionUtils.computeIfAbsent(TABLE_INFO_CACHE, clazz, k -> {
+            try {
+                return initTableInfo(null, null, k);
+            } catch (Exception e) {
+                logger.warn("Failed to initialize table info for class: " + k.getName(), e);
+                return null;
+            }
+        });
     }
 
     /**
      * <p>
-     * 根据表名获取实体映射表信息
+     * 获取表信息
      * </p>
      *
      * @param tableName 表名
@@ -128,27 +120,52 @@ public class TableInfoHelper {
         if (StringUtils.isBlank(tableName)) {
             return null;
         }
-        return TABLE_NAME_INFO_CACHE.get(tableName);
+        return CollectionUtils.computeIfAbsent(TABLE_NAME_INFO_CACHE, tableName, k -> {
+            // Try to find by table name in existing cache
+            for (TableInfo tableInfo : TABLE_INFO_CACHE.values()) {
+                if (tableName.equals(tableInfo.getTableName())) {
+                    return tableInfo;
+                }
+            }
+            return null;
+        });
     }
 
     /**
      * <p>
-     * 获取所有实体映射表信息
+     * 获取所有表信息
      * </p>
      *
      * @return 数据库表反射信息集合
      */
     public static List<TableInfo> getTableInfos() {
-        return Collections.unmodifiableList(new ArrayList<>(TABLE_INFO_CACHE.values()));
+        return new ArrayList<>(TABLE_INFO_CACHE.values());
     }
 
     /**
-     * 清空实体表映射缓存信息
+     * <p>
+     * 清除指定表信息
+     * </p>
      *
-     * @param entityClass 实体 Class
+     * @param entityClass 实体类
      */
     public static void remove(Class<?> entityClass) {
-        TABLE_INFO_CACHE.remove(entityClass);
+        if (entityClass != null) {
+            TableInfo tableInfo = TABLE_INFO_CACHE.remove(entityClass);
+            if (tableInfo != null) {
+                TABLE_NAME_INFO_CACHE.remove(tableInfo.getTableName());
+            }
+        }
+    }
+
+    /**
+     * <p>
+     * 清除所有表信息缓存
+     * </p>
+     */
+    public static void clearCache() {
+        TABLE_INFO_CACHE.clear();
+        TABLE_NAME_INFO_CACHE.clear();
     }
 
     /**

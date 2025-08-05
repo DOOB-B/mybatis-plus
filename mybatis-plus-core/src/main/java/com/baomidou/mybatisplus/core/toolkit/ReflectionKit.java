@@ -42,6 +42,11 @@ public final class ReflectionKit {
      * class field cache
      */
     private static final Map<Class<?>, List<Field>> CLASS_FIELD_CACHE = new ConcurrentHashMap<>();
+    
+    /**
+     * field access cache to avoid repeated setAccessible calls
+     */
+    private static final Map<Field, Boolean> FIELD_ACCESS_CACHE = new ConcurrentHashMap<>();
 
     @Deprecated
     private static final Map<Class<?>, Class<?>> PRIMITIVE_WRAPPER_TYPE_MAP = new IdentityHashMap<>(8);
@@ -75,7 +80,13 @@ public final class ReflectionKit {
         try {
             Field field = fieldMaps.get(fieldName);
             Assert.notNull(field, "Error: NoSuchField in %s for %s.  Cause:", cls.getSimpleName(), fieldName);
-            field.setAccessible(true);
+            
+            // Use cached accessibility check
+            if (!FIELD_ACCESS_CACHE.containsKey(field)) {
+                field.setAccessible(true);
+                FIELD_ACCESS_CACHE.put(field, true);
+            }
+            
             return field.get(entity);
         } catch (ReflectiveOperationException e) {
             throw ExceptionUtils.mpe("Error: Cannot read field in %s.  Cause:", e, cls.getSimpleName());
@@ -191,6 +202,14 @@ public final class ReflectionKit {
      */
     public static <T extends AccessibleObject> T setAccessible(T object) {
         return AccessController.doPrivileged(new SetAccessibleAction<>(object));
+    }
+
+    /**
+     * Clear all caches to free memory
+     */
+    public static void clearCaches() {
+        CLASS_FIELD_CACHE.clear();
+        FIELD_ACCESS_CACHE.clear();
     }
 
 }
